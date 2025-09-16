@@ -142,6 +142,13 @@ class ProjectRenamer:
         except ValueError as e:
             validation_errors.append(f".ioc文件: {str(e)}")
         
+        # 验证flash.cfg文件
+        try:
+            self._validate_flash_cfg()
+            print("✓ flash.cfg文件验证通过")
+        except ValueError as e:
+            validation_errors.append(f"flash.cfg文件: {str(e)}")
+        
         if validation_errors:
             error_message = "原工程名验证失败，发现以下错误：\n" + "\n".join([f"  - {error}" for error in validation_errors])
             raise ValueError(error_message)
@@ -199,6 +206,20 @@ class ProjectRenamer:
         if old_project_name not in content:
             raise ValueError(f"ProjectManager.ProjectName不匹配")
     
+    def _validate_flash_cfg(self):
+        """验证flash.cfg文件中的原工程名"""
+        flash_cfg_path = self.project_root / "flash.cfg"
+        if not flash_cfg_path.exists():
+            return
+        
+        with open(flash_cfg_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 检查program行中的.elf文件名
+        old_elf_path = f"build/Debug/{self.old_name}.elf"
+        if old_elf_path not in content:
+            raise ValueError(f"program行中的.elf文件名不匹配，预期包含:{old_elf_path}")
+    
     def modify_file_contents(self):
         """修改相关文件内容"""
         print("\n=== 开始修改文件内容 ===")
@@ -214,6 +235,9 @@ class ProjectRenamer:
         
         # 3.4 修改.ioc文件
         self._modify_ioc_file()
+        
+        # 3.5 修改flash.cfg文件
+        self._modify_flash_cfg()
     
     def _modify_eide_json(self):
         """修改eide.json文件"""
@@ -324,6 +348,26 @@ class ProjectRenamer:
             f.write(content)
         
         print("✓ 修改.ioc文件完成")
+    
+    def _modify_flash_cfg(self):
+        """修改flash.cfg文件"""
+        flash_cfg_path = self.project_root / "flash.cfg"
+        if not flash_cfg_path.exists():
+            return
+        
+        with open(flash_cfg_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 修改program行中的.elf文件名
+        old_elf_path = f"build/Debug/{self.old_name}.elf"
+        new_elf_path = f"build/Debug/{self.new_name}.elf"
+        
+        content = content.replace(old_elf_path, new_elf_path)
+        
+        with open(flash_cfg_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        print("✓ 修改flash.cfg文件完成")
     
     def rename_project(self, new_name=None):
         """执行完整的项目重命名流程"""
