@@ -4,6 +4,8 @@ project(gsrl LANGUAGES C CXX)
 
 add_library(${PROJECT_NAME} OBJECT)
 
+add_subdirectory(Dependence/eigen)
+
 file(GLOB_RECURSE GSRL_ALGORITHM_SOURCES
     "Algorithm/src/*.c"
     "Algorithm/src/*.cpp"
@@ -32,10 +34,16 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     Driver/inc
 )
 
+target_compile_definitions(${PROJECT_NAME} PUBLIC
+    EIGEN_NO_MALLOC
+)
+
 target_compile_features(${PROJECT_NAME} PUBLIC
     c_std_11
     cxx_std_17
 )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC stm32cubemx)
-
+target_link_libraries(${PROJECT_NAME} PUBLIC 
+    stm32cubemx
+    eigen
+)
