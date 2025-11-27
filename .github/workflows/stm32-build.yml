@@ -23,10 +23,13 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Install Arm Toolchain and Ninja
+    - name: Install GNU Arm Toolchain(arm-none-eabi)
+      uses: carlosperate/arm-none-eabi-gcc-action@v1.11.0
+
+    - name: Install Ninja
       run: |
         sudo apt-get update
-        sudo apt-get install -y gcc-arm-none-eabi newlib-arm-none-eabi ninja-build
+        sudo apt-get install -y ninja-build
 
     - name: Check Toolchain Version
       run: arm-none-eabi-gcc --version
