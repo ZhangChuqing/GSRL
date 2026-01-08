@@ -1030,22 +1030,7 @@ void MotorJ60::convertControllerOutputToMotorControlData()
         return;
     }
 
-    if (m_state != ENABLED) {
-        // DeepJ60 open source logic does not block sending control commands based on state.
-        // It simply sends whatever 'MotorCommand' is set to.
-        // We will remove this blocking logic to perfectly adapt.
-        // If the user wants to enable, they call enable().
-        // If they want to send control, they setControlParams().
-        // However, we still need to send Enable frame if we are in the 'enabling' phase (handled above by counter).
-        // If we are just 'Disabled' and no counter, maybe we should respect the class state?
-        // But for "Perfect Adaptation", we follow the Open Source "stateless" send approach
-        // or allow sending control if the user explicitly requested it (setControlParams + convert called).
-        
-        // m_motorControlHeader.StdId = generateCanID(m_motorID, CMD_ENABLE);
-        // m_motorControlHeader.DLC = 0;
-        // m_sendingCmdIndex = CMD_ENABLE;
-        // return;
-    }
+    // 注意：J60 协议允许在非 ENABLED 状态下发送控制命令，因此此处特意不进行状态拦截
 
     setControlHeader(CMD_CONTROL, 8);
     m_sendingCmdIndex = CMD_CONTROL;
@@ -1064,7 +1049,7 @@ void MotorJ60::convertControllerOutputToMotorControlData()
     uint32_t kd_int = RealDataToCanData(kd_sat, KD_MIN, KD_MAX, 8);
     uint32_t t_int = RealDataToCanData(t_sat, TORQUE_MIN, TORQUE_MAX, 16);
 
-    // DeepJ60 Packing
+    // DeepJ60 数据打包
     m_motorControlData[0] = p_int & 0xFF;
     m_motorControlData[1] = (p_int >> 8) & 0xFF;
     m_motorControlData[2] = v_int & 0xFF;
@@ -1079,9 +1064,9 @@ bool MotorJ60::decodeCanRxMessage(const can_rx_message_t &rxMessage)
 {
     uint16_t rxId = rxMessage.header.StdId;
     
-    // Check ID logic (tighter check based on observation that replies are usually +0x10)
+    // 检查ID逻辑 (更加严格的检查，基于观察到的回复ID通常是 +0x10)
     uint8_t rxJointPart = rxId & 0x1F; 
-    // Allow strict match or +0x10 match
+    // 允许精确匹配或者 +0x10 匹配
     if (rxJointPart != m_jointID && rxJointPart != (m_jointID | 0x10)) { return false; } 
     
     uint8_t cmdIndex = (rxId >> 5) & 0x3F;
@@ -1106,27 +1091,25 @@ bool MotorJ60::decodeCanRxMessage(const can_rx_message_t &rxMessage)
         const float TORQUE_MAX = 40.0f, TORQUE_MIN = -40.0f;
         const float MOTOR_TEMPERATURE_MAX = 200.0f, MOTOR_TEMPERATURE_MIN = -20.0f;
 
-        // DeepJ60 Unpacking from ReceiveCanData
-        // Position: 20 bits
+        // DeepJ60 解包接收到的CAN数据
+        // 位置: 20 bits
         uint32_t CurrentPosition = d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)(d[2] & 0x0F) << 16);
         
-        // Velocity: 20 bits. 
-        // Replicating Open Source Logic exactly including the mask behavior
+        // 速度: 20 bits. 
         uint32_t CurrentVelocity = ((d[2] >> 4) & 0x0F) | ((uint32_t)d[3] << 4) | (((uint32_t)d[4] << 12) & 0xFF00);
 
         m_currentAngle = CanDataToRealData(CurrentPosition, POSITION_MIN, POSITION_MAX, 20);
         m_currentAngularVelocity = CanDataToRealData(CurrentVelocity, VELOCITY_MIN, VELOCITY_MAX, 20);
         
-        // Torque 16 bits
+        // 扭矩 16 bits
         uint32_t CurrentTorque = d[5] | ((uint32_t)d[6] << 8);
         m_currentTorqueCurrent = (fp32)CanDataToRealData(CurrentTorque, TORQUE_MIN, TORQUE_MAX, 16);
 
-        // Temp
-        // Open Source: Flag = LSB, Temp = Bits 1-7
+        // 温度
         uint32_t TemperatureFlag = d[7] & 0x01;
         uint32_t CurrentTemperature = (d[7] >> 1) & 0x7F;
 
-        if (TemperatureFlag == 1) { // Motor Temp
+        if (TemperatureFlag == 1) { // 电机温度
              m_temperature = (int8_t)CanDataToRealData(CurrentTemperature, MOTOR_TEMPERATURE_MIN, MOTOR_TEMPERATURE_MAX, 7);
         }
 
