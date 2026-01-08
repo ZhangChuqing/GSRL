@@ -924,3 +924,224 @@ void MotorLKMG::setBrake(bool isBraked)
         m_motorControlData[7] = 0x00;
     }
 }
+
+/******************************************************************************
+ *                           MotorJ60实现
+ ******************************************************************************/
+
+MotorJ60::MotorJ60(uint8_t jointID, Controller *controller)
+    : Motor(generateCanID(jointID, CMD_ENABLE), 
+    generateCanID(jointID, CMD_ENABLE), controller),
+    m_jointID(jointID),
+    m_state(DISABLED),
+    m_error({false, false, false, false, false, 0}),
+    m_motorID(jointID),
+    m_sendingCmdIndex(CMD_CONTROL),
+    m_cmdP(0.0f), m_cmdV(0.0f), m_cmdT(0.0f), m_cmdKp(0.0f), m_cmdKd(0.0f),
+    m_enableCmdTxCount(0), m_zeroCmdTxCount(0)
+{
+    // J60 CAN ID: (CmdIndex << 5) | JointID
+}
+
+void MotorJ60::enable()
+{
+    // DeepJ60 uses SetRefCodeCmd(CMD_ENABLE) logic
+    m_enableCmdTxCount = 10;
+    m_sendingCmdIndex = CMD_ENABLE;
+    m_motorControlHeader.StdId = generateCanID(m_motorID, CMD_ENABLE);
+    m_motorControlHeader.DLC = 0;
+}
+
+void MotorJ60::constructRTR(uint8_t cmdID)
+{
+    m_motorControlHeader.StdId = generateCanID(m_motorID, cmdID);
+    m_motorControlHeader.DLC = 0;
+    m_motorControlHeader.RTR = CAN_RTR_REMOTE;
+    m_sendingCmdIndex = cmdID;
+}
+
+void MotorJ60::disable()
+{
+    m_state = DISABLED;
+    // Protocol requires sending CMD_DISABLE (1)
+    m_motorControlHeader.StdId = generateCanID(m_motorID, CMD_DISABLE);
+    m_motorControlHeader.DLC = 0;
+    m_sendingCmdIndex = CMD_DISABLE;
+}
+
+void MotorJ60::setControlHeader(uint8_t cmdID, uint8_t dlc)
+{
+   m_motorControlHeader.StdId = generateCanID(m_motorID, cmdID);
+   m_motorControlHeader.DLC = dlc;
+   m_sendingCmdIndex = CMD_CONTROL;
+}
+
+void MotorJ60::clearError()
+{
+    m_state = DISABLED;
+    // Protocol requires sending CMD_CLEAR_ERROR (17)
+    m_motorControlHeader.StdId = generateCanID(m_motorID, CMD_CLEAR_ERROR);
+    m_motorControlHeader.DLC = 0;
+    m_sendingCmdIndex = CMD_CLEAR_ERROR;
+    m_error = {false, false, false, false, false, 0};
+}
+
+void MotorJ60::setZeroPosition()
+{
+    m_zeroCmdTxCount = 10;
+}
+
+void MotorJ60::setControlParams(fp32 p, fp32 v, fp32 t, fp32 kp, fp32 kd)
+{
+    m_cmdP = p;
+    m_cmdV = v;
+    m_cmdT = t;
+    m_cmdKp = kp;
+    m_cmdKd = kd;
+}
+
+static uint32_t RealDataToCanData(float RealData, float MinRealData, float MaxRealData, uint32_t DataBitNum) {
+    return (uint32_t)(((1 << DataBitNum) - 1) * (RealData - MinRealData) / (MaxRealData - MinRealData));
+}
+
+static float CanDataToRealData(uint32_t CanData, float MinRealData, float MaxRealData, uint32_t DataBitNum) {
+    return (MinRealData + (MaxRealData - MinRealData) * CanData / ((1 << DataBitNum) - 1));
+}
+
+void MotorJ60::convertControllerOutputToMotorControlData()
+{
+    const float POSITION_MAX = 40.0f;
+    const float POSITION_MIN = -40.0f;
+    const float VELOCITY_MAX = 40.0f;
+    const float VELOCITY_MIN = -40.0f;
+    const float KP_MAX = 1023.0f;
+    const float KP_MIN = 0.0f;
+    const float KD_MAX = 51.0f;
+    const float KD_MIN = 0.0f;
+    const float TORQUE_MAX = 40.0f;
+    const float TORQUE_MIN = -40.0f;
+
+    // 处理特殊命令的发送逻辑
+    if (m_enableCmdTxCount > 0) {
+        m_sendingCmdIndex = CMD_ENABLE;
+        m_motorControlHeader.StdId = generateCanID(m_motorID, CMD_ENABLE);
+        m_motorControlHeader.DLC = 0;
+        m_enableCmdTxCount--;
+        return;
+    }
+
+    if (m_state != ENABLED) {
+        // DeepJ60 open source logic does not block sending control commands based on state.
+        // It simply sends whatever 'MotorCommand' is set to.
+        // We will remove this blocking logic to perfectly adapt.
+        // If the user wants to enable, they call enable().
+        // If they want to send control, they setControlParams().
+        // However, we still need to send Enable frame if we are in the 'enabling' phase (handled above by counter).
+        // If we are just 'Disabled' and no counter, maybe we should respect the class state?
+        // But for "Perfect Adaptation", we follow the Open Source "stateless" send approach
+        // or allow sending control if the user explicitly requested it (setControlParams + convert called).
+        
+        // m_motorControlHeader.StdId = generateCanID(m_motorID, CMD_ENABLE);
+        // m_motorControlHeader.DLC = 0;
+        // m_sendingCmdIndex = CMD_ENABLE;
+        // return;
+    }
+
+    setControlHeader(CMD_CONTROL, 8);
+    m_sendingCmdIndex = CMD_CONTROL;
+
+    // 限幅
+    float p_sat = fmaxf(fminf(m_cmdP, POSITION_MAX), POSITION_MIN);
+    float v_sat = fmaxf(fminf(m_cmdV, VELOCITY_MAX), VELOCITY_MIN);
+    float t_sat = fmaxf(fminf(m_cmdT, TORQUE_MAX), TORQUE_MIN);
+    float kp_sat = fmaxf(fminf(m_cmdKp, KP_MAX), KP_MIN);
+    float kd_sat = fmaxf(fminf(m_cmdKd, KD_MAX), KD_MIN);
+
+    // 转换
+    uint32_t p_int = RealDataToCanData(p_sat, POSITION_MIN, POSITION_MAX, 16);
+    uint32_t v_int = RealDataToCanData(v_sat, VELOCITY_MIN, VELOCITY_MAX, 14);
+    uint32_t kp_int = RealDataToCanData(kp_sat, KP_MIN, KP_MAX, 10);
+    uint32_t kd_int = RealDataToCanData(kd_sat, KD_MIN, KD_MAX, 8);
+    uint32_t t_int = RealDataToCanData(t_sat, TORQUE_MIN, TORQUE_MAX, 16);
+
+    // DeepJ60 Packing
+    m_motorControlData[0] = p_int & 0xFF;
+    m_motorControlData[1] = (p_int >> 8) & 0xFF;
+    m_motorControlData[2] = v_int & 0xFF;
+    m_motorControlData[3] = ((v_int >> 8) & 0x3F) | ((kp_int & 0x03) << 6);
+    m_motorControlData[4] = (kp_int >> 2) & 0xFF;
+    m_motorControlData[5] = kd_int & 0xFF;
+    m_motorControlData[6] = t_int & 0xFF;
+    m_motorControlData[7] = (t_int >> 8) & 0xFF;
+}
+
+bool MotorJ60::decodeCanRxMessage(const can_rx_message_t &rxMessage)
+{
+    uint16_t rxId = rxMessage.header.StdId;
+    
+    // Check ID logic (tighter check based on observation that replies are usually +0x10)
+    uint8_t rxJointPart = rxId & 0x1F; 
+    // Allow strict match or +0x10 match
+    if (rxJointPart != m_jointID && rxJointPart != (m_jointID | 0x10)) { return false; } 
+    
+    uint8_t cmdIndex = (rxId >> 5) & 0x3F;
+    
+    // 使能/失能响应 (DLC=1)
+    if ((cmdIndex == CMD_ENABLE || cmdIndex == CMD_DISABLE) && rxMessage.header.DLC == 1) {
+        bool success = (rxMessage.data[0] == 0);
+        if (cmdIndex == CMD_ENABLE && success) {
+            m_state = ENABLED;
+        } else if (cmdIndex == CMD_DISABLE && success) {
+            m_state = DISABLED;
+        }
+        return true;
+    }
+    
+    // 控制响应 (DLC=8)
+    if (cmdIndex == CMD_CONTROL && rxMessage.header.DLC == 8) {
+        
+        const uint8_t *d = rxMessage.data;
+        const float POSITION_MAX = 40.0f, POSITION_MIN = -40.0f;
+        const float VELOCITY_MAX = 40.0f, VELOCITY_MIN = -40.0f;
+        const float TORQUE_MAX = 40.0f, TORQUE_MIN = -40.0f;
+        const float MOTOR_TEMPERATURE_MAX = 200.0f, MOTOR_TEMPERATURE_MIN = -20.0f;
+
+        // DeepJ60 Unpacking from ReceiveCanData
+        // Position: 20 bits
+        uint32_t CurrentPosition = d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)(d[2] & 0x0F) << 16);
+        
+        // Velocity: 20 bits. 
+        // Replicating Open Source Logic exactly including the mask behavior
+        uint32_t CurrentVelocity = ((d[2] >> 4) & 0x0F) | ((uint32_t)d[3] << 4) | (((uint32_t)d[4] << 12) & 0xFF00);
+
+        m_currentAngle = CanDataToRealData(CurrentPosition, POSITION_MIN, POSITION_MAX, 20);
+        m_currentAngularVelocity = CanDataToRealData(CurrentVelocity, VELOCITY_MIN, VELOCITY_MAX, 20);
+        
+        // Torque 16 bits
+        uint32_t CurrentTorque = d[5] | ((uint32_t)d[6] << 8);
+        m_currentTorqueCurrent = (fp32)CanDataToRealData(CurrentTorque, TORQUE_MIN, TORQUE_MAX, 16);
+
+        // Temp
+        // Open Source: Flag = LSB, Temp = Bits 1-7
+        uint32_t TemperatureFlag = d[7] & 0x01;
+        uint32_t CurrentTemperature = (d[7] >> 1) & 0x7F;
+
+        if (TemperatureFlag == 1) { // Motor Temp
+             m_temperature = (int8_t)CanDataToRealData(CurrentTemperature, MOTOR_TEMPERATURE_MIN, MOTOR_TEMPERATURE_MAX, 7);
+        }
+
+        m_error.rawErrorCode = 0;
+        return true;
+    }
+    
+    // 清错响应 (DLC=1)
+    if (cmdIndex == CMD_CLEAR_ERROR && rxMessage.header.DLC == 1) {
+        if (rxMessage.data[0] == 0) {
+            m_error = {false, false, false, false, false, 0};
+            m_state = DISABLED;
+        }
+        return true;
+    }
+    
+    return false;
+}
