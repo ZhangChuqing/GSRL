@@ -39,7 +39,7 @@ ET08ARemoteControl et08a([]() {
     // config.knobLD       = ET08AChannelIndex::CH_7;
     // config.knobRD       = ET08AChannelIndex::CH_8;
     return config;
-}(), 5.0f);//死区：5.0f;
+}(), 0.05f);//5%死区;
 
 //也可以这样初始化，必须写在函数里
 // ET08ARemoteControl::Config et08aConfig;
