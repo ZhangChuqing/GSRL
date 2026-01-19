@@ -21,7 +21,7 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "gsrl_common.h"
-#include "can.h"
+#include "fdcan.h"
 #include "cmsis_os.h"
 
 /* Exported types ------------------------------------------------------------*/
@@ -31,7 +31,7 @@ extern "C" {
  */
 typedef struct
 {
-    CAN_RxHeaderTypeDef header;
+    FDCAN_RxHeaderTypeDef header;
     uint8_t data[8];
 } can_rx_message_t;
 
@@ -46,7 +46,7 @@ typedef void (*CAN_Call_Back)(can_rx_message_t *pRxMsg);
  */
 typedef struct
 {
-    CAN_HandleTypeDef *hcan;
+    FDCAN_HandleTypeDef *hcan;
     CAN_Call_Back rxCallbackFunction;
 } CAN_Manage_Object_t;
 
@@ -57,8 +57,8 @@ extern CAN_Manage_Object_t s_can_manage_objects[2]; // CAN管理对象
 /* Exported macro ------------------------------------------------------------*/
 
 /* Exported functions prototypes ---------------------------------------------*/
-void CAN_Init(CAN_HandleTypeDef *hcan, CAN_Call_Back rxCallbackFunction);
-HAL_StatusTypeDef CAN_Send_Data(CAN_HandleTypeDef *hcan, CAN_TxHeaderTypeDef *pTxHeader, uint8_t *pTxData);
+void CAN_Init(FDCAN_HandleTypeDef *hcan, CAN_Call_Back rxCallbackFunction);
+HAL_StatusTypeDef CAN_Send_Data(FDCAN_HandleTypeDef *hcan, FDCAN_TxHeaderTypeDef *pTxHeader, uint8_t *pTxData);
 
 /* Defines -----------------------------------------------------------*/
 
