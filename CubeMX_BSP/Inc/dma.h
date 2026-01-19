@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2024 STMicroelectronics.
+  * Copyright (c) 2026 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -29,6 +29,7 @@ extern "C" {
 #include "main.h"
 
 /* DMA memory to memory transfer handles -------------------------------------*/
+extern DMA_HandleTypeDef hdma_memtomem_dma2_stream6;
 
 /* USER CODE BEGIN Includes */
 
