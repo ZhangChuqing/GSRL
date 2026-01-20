@@ -234,7 +234,7 @@ targets:
             LIB_FLAGS: -lm
             output-format: elf
             remove-unused-input-sections: true
-        scatterFilePath: CubeMX_BSP/STM32F407XX_FLASH.ld
+        scatterFilePath: CubeMX_BSP/STM32H723XG_FLASH.ld
         storageLayout:
           RAM: []
           ROM: []

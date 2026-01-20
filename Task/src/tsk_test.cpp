@@ -27,7 +27,8 @@ SimplePID::PIDParam param = {
 };
 SimplePID myPID(SimplePID::PID_POSITION, param);
 // Motor
-MotorDM4310 motor(1, 0, 3.1415926f, 40, 15, &myPID);
+// MotorDM4310 motor(1, 0, 3.1415926f, 40, 15, &myPID);
+MotorGM6020 motor(2, &myPID);
 // RemoteControl
 Dr16RemoteControl dr16;
 
@@ -62,11 +63,11 @@ inline void transmitMotorsControlData();
  */
 extern "C" void test_task(void *argument)
 {
-    CAN_Init(&hcan1, can1RxCallback);                  // 初始化CAN1
+    CAN_Init(&hfdcan1, can1RxCallback);                  // 初始化CAN1
     UART_Init(&huart3, dr16ITCallback, 36);            // 初始化DR16串口
     TickType_t taskLastWakeTime = xTaskGetTickCount(); // 获取任务开始时间
     while (1) {
-        motor.openloopControl(0.0f);
+        motor.openloopControl(100.0f);
         transmitMotorsControlData();
         vTaskDelayUntil(&taskLastWakeTime, 1); // 确保任务以定周期1ms运行
     }
@@ -98,6 +99,5 @@ extern "C" void can1RxCallback(can_rx_message_t *pRxMsg)
 inline void transmitMotorsControlData()
 {
     const uint8_t *data = motor.getMotorControlData();
-    uint32_t send_mail_box;
-    HAL_CAN_AddTxMessage(&hcan1, motor.getMotorControlHeader(), data, &send_mail_box);
+    CAN_Send_Data(&hfdcan1, (FDCAN_TxHeaderTypeDef *)motor.getMotorControlHeader(), (uint8_t *)data);
 }

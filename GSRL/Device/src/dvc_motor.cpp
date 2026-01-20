@@ -52,9 +52,9 @@ uint32_t Motor::getMotorFeedbackMessageID() const
 
 /**
  * @brief 获取电机CAN控制消息头结构体指针
- * @return const CAN_TxHeaderTypeDef* 电机CAN控制消息头指针
+ * @return const FDCAN_TxHeaderTypeDef* 电机CAN控制消息头指针
  */
-const CAN_TxHeaderTypeDef *Motor::getMotorControlHeader() const
+const FDCAN_TxHeaderTypeDef *Motor::getMotorControlHeader() const
 {
     return &m_motorControlHeader;
 }
@@ -419,7 +419,7 @@ Motor::Motor(uint32_t canControlID, uint32_t canFeedbackID, Controller *controll
 {
     m_motorControlHeader.DataLength    = FDCAN_DLC_BYTES_8;
     m_motorControlHeader.IdType        = FDCAN_STANDARD_ID;
-    m_motorControlHeader.RxFrameType   = FDCAN_DATA_FRAME;
+    m_motorControlHeader.TxFrameType   = FDCAN_DATA_FRAME;
     m_motorControlHeader.Identifier    = m_motorControlMessageID;
     m_motorControlHeader.FDFormat      = FDCAN_CLASSIC_CAN;
     m_motorControlHeader.BitRateSwitch = FDCAN_BRS_OFF;

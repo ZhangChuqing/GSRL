@@ -123,10 +123,17 @@ static void can_all_pass_filter_init(FDCAN_HandleTypeDef *hcan)
     sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
     sFilterConfig.FilterID1 = 0x0;
     sFilterConfig.FilterID2 = 0x0;
-    HAL_FDCAN_ConfigFilter(hcan, &sFilterConfig);
 
-    sFilterConfig.IdType = FDCAN_EXTENDED_ID;
-    HAL_FDCAN_ConfigFilter(hcan, &sFilterConfig);
+    if (hcan->Init.StdFiltersNbr > 0)
+    {
+        HAL_FDCAN_ConfigFilter(hcan, &sFilterConfig);
+    }
+
+    if (hcan->Init.ExtFiltersNbr > 0)
+    {
+        sFilterConfig.IdType = FDCAN_EXTENDED_ID;
+        HAL_FDCAN_ConfigFilter(hcan, &sFilterConfig);
+    }
 }
 
 /**
