@@ -19,10 +19,13 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set the project name
-set(CMAKE_PROJECT_NAME HerKules_Framework)
+set(CMAKE_PROJECT_NAME GMStdRobotLib)
 
 # Enable compile command to ease indexing with e.g. clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
+# Enable colored diagnostics
+set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 # Core project settings
 project(${CMAKE_PROJECT_NAME})
@@ -34,8 +37,14 @@ enable_language(C ASM)
 # Create an executable object type
 add_executable(${CMAKE_PROJECT_NAME})
 
+# Include auto-generation config script
+include(${CMAKE_SOURCE_DIR}/cmake/generate-config.cmake)
+
 # Add STM32CubeMX generated sources
-add_subdirectory(cmake/stm32cubemx)
+add_subdirectory(CubeMX_BSP/cmake/stm32cubemx)
+
+# Add GSRL sources
+add_subdirectory(GSRL)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -57,6 +66,16 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
 )
 
+# Add compile options
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
+    # Add user defined compile options
+)
+
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    # Add user defined link options
+    -u _printf_float
+)
+
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
@@ -65,4 +84,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+    gsrl
 )
